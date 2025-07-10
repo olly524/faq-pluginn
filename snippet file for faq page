@@ -1,3 +1,4 @@
+<?php
 add_action('add_meta_boxes', function () {
     $post_id = $_GET['post'] ?? $_POST['post_ID'] ?? null;
     if ((int) $post_id === 9196) {
@@ -12,6 +13,7 @@ add_action('admin_enqueue_scripts', function ($hook) {
 
     wp_enqueue_script('jquery-ui-sortable');
     wp_enqueue_style('dashicons');
+    wp_enqueue_script('quicktags');
     wp_enqueue_script('fsco-faq-editor', admin_url('admin-ajax.php'), [], null, true);
     wp_localize_script('fsco-faq-editor', 'FSFAQ', [
         'ajax_url' => admin_url('admin-ajax.php'),
@@ -160,6 +162,10 @@ function fsco_render_faq_metabox($post) {
                         item.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
                         const catInput = item.querySelector('input[name="faq_category[]"]');
                         if (catInput) catInput.addEventListener('input', fscoUpdateCategoryList);
+                        wp.editor.initialize(`faq_answer_${fscoIndex}`, {
+                            tinymce: false,
+                            quicktags: true
+                        });
                     }
                     fscoUpdateCategoryList();
                     fscoIndex++;
@@ -178,10 +184,13 @@ function fsco_render_faq_metabox($post) {
         const faqs = [];
         document.querySelectorAll('.faq-item').forEach(item => {
             const cat = item.querySelector('input[name="faq_category[]"]').value;
-            const q = item.querySelector('input[name="faq_question[]"]').value;
+            const q   = item.querySelector('input[name="faq_question[]"]').value;
             const textarea = item.querySelector('textarea');
-            const answer = textarea ? textarea.value : "";
-            if (q.trim()) faqs.push({ category: cat, question: q, answer: answer });
+            const id = textarea ? textarea.id : '';
+            const editor = window.tinyMCE ? tinyMCE.get(id) : null;
+            const answer = editor ? editor.getContent() :
+                (textarea ? textarea.value : '');
+            if (q.trim()) faqs.push({ category: cat, question: q, answer });
         });
         const blob = new Blob([JSON.stringify(faqs, null, 2)], { type: "application/json" });
         const link = document.createElement("a");
@@ -222,6 +231,10 @@ function fsco_render_faq_metabox($post) {
                                 const catInput = newItem.querySelector('input[name="faq_category[]"]');
                                 if (catInput) catInput.addEventListener('input', fscoUpdateCategoryList);
                                 document.getElementById(`faq_answer_${fscoIndex}`).value = f.answer || '';
+                                wp.editor.initialize(`faq_answer_${fscoIndex}`, {
+                                    tinymce: false,
+                                    quicktags: true
+                                });
                                 fscoUpdateCategoryList();
                                 fscoIndex++;
                             }
@@ -277,7 +290,14 @@ function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
             </div>
             <label>Answer</label>
             <?php
-            <textarea id="faq_answer_<?php echo $i; ?>" name="faq_answer[]" rows="6" style="width:100%;"><?php echo esc_textarea($a); ?></textarea>
+            wp_editor($a, "faq_answer_$i", [
+                'textarea_name' => 'faq_answer[]',
+                'textarea_rows' => 6,
+                'editor_height' => 160,
+                'tinymce'       => false,
+                'quicktags'     => true,
+                'media_buttons' => false,
+            ]);
             ?>
         </div>
     </div>
