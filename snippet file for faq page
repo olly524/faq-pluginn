@@ -1,0 +1,269 @@
+add_action('add_meta_boxes', function () {
+    $post_id = $_GET['post'] ?? $_POST['post_ID'] ?? null;
+    if ((int) $post_id === 9196) {
+        add_meta_box('faq_editor', 'FAQ Editor', 'fsco_render_faq_metabox', 'page', 'normal', 'default');
+    }
+});
+
+add_action('admin_enqueue_scripts', function ($hook) {
+    if ($hook !== 'post.php') return;
+    $post_id = $_GET['post'] ?? null;
+    if ((int) $post_id !== 9196) return;
+
+    wp_enqueue_editor();
+    wp_enqueue_script('fsco-faq-editor', admin_url('admin-ajax.php'), [], null, true);
+    wp_localize_script('fsco-faq-editor', 'FSFAQ', [
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce'    => wp_create_nonce('fsco_faq_nonce')
+    ]);
+});
+
+add_action('wp_ajax_fsco_add_faq_row', function () {
+    check_ajax_referer('fsco_faq_nonce', 'nonce');
+    $index = absint($_POST['index'] ?? 0);
+    ob_start();
+    fsco_render_faq_item('', '', '', $index);
+    wp_send_json_success(ob_get_clean());
+});
+function fsco_render_faq_metabox($post) {
+    $faqs = json_decode(get_post_meta($post->ID, '_faq_json', true), true) ?: [];
+    $categories = array_unique(array_filter(array_column($faqs, 'category')));
+    wp_nonce_field('save_faq_meta', 'faq_meta_nonce');
+    ?>
+    <style>
+        .fsfaq-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .faq-item {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #f9f9f9;
+            margin-bottom: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+        .faq-header {
+            background: #eee;
+            padding: 10px 16px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .faq-remove-btn {
+            background: transparent;
+            border: none;
+            font-size: 20px;
+            color: #888;
+            cursor: pointer;
+        }
+        .faq-body {
+            padding: 16px;
+            display: none;
+        }
+        .faq-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .faq-col input {
+            width: 100%;
+            padding: 8px 10px;
+            font-size: 14px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+    </style>
+
+    <div class="fsfaq-controls">
+        <button type="button" class="button button-primary" onclick="fscoAddFaq()">+ Add FAQ</button>
+        <select id="faq-filter" onchange="fscoFilterFaqs(this.value)">
+            <option value="">All Categories</option>
+            <?php foreach ($categories as $cat): ?>
+                <option value="<?php echo esc_attr($cat); ?>"><?php echo esc_html($cat); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <button type="button" onclick="fscoExportFaqs()">Export</button>
+        <label>
+            <button type="button" onclick="document.getElementById('fsco-import').click()">Import</button>
+            <input type="file" id="fsco-import" accept=".json" style="display:none" onchange="fscoImportFaqs(this)">
+        </label>
+    </div>
+
+    <div id="faq-list">
+        <?php foreach ($faqs as $i => $faq) {
+            fsco_render_faq_item($faq['category'], $faq['question'], $faq['answer'], $i);
+        } ?>
+    </div>
+
+    <script>
+    let fscoIndex = <?php echo count($faqs); ?>;
+
+    function fscoAddFaq() {
+        const form = new FormData();
+        form.append('action', 'fsco_add_faq_row');
+        form.append('nonce', FSFAQ.nonce);
+        form.append('index', fscoIndex);
+        fetch(FSFAQ.ajax_url, { method: 'POST', body: form })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const wrap = document.createElement('div');
+                    wrap.innerHTML = data.data;
+                    document.getElementById('faq-list').appendChild(wrap);
+                    wp.editor.initialize(`faq_answer_${fscoIndex}`, {
+                        tinymce: true,
+                        quicktags: true
+                    });
+                    fscoIndex++;
+                }
+            });
+    }
+
+    function fscoFilterFaqs(category) {
+        document.querySelectorAll('.faq-item').forEach(item => {
+            const value = item.getAttribute('data-category') || '';
+            item.style.display = (!category || category === value) ? 'block' : 'none';
+        });
+    }
+
+    function fscoExportFaqs() {
+        const faqs = [];
+        document.querySelectorAll('.faq-item').forEach((item, i) => {
+            const cat = item.querySelector('input[name="faq_category[]"]').value;
+            const q = item.querySelector('input[name="faq_question[]"]').value;
+            const a = tinyMCE.get(`faq_answer_${i}`)?.getContent() || '';
+            if (q.trim()) faqs.push({ category: cat, question: q, answer: a });
+        });
+        const blob = new Blob([JSON.stringify(faqs, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'faqs.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    function fscoImportFaqs(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const data = JSON.parse(reader.result);
+                if (!Array.isArray(data)) throw new Error();
+                const list = document.getElementById('faq-list');
+                list.innerHTML = '';
+                fscoIndex = 0;
+                data.forEach((f, i) => {
+                    const form = new FormData();
+                    form.append('action', 'fsco_add_faq_row');
+                    form.append('nonce', FSFAQ.nonce);
+                    form.append('index', fscoIndex);
+                    fetch(FSFAQ.ajax_url, { method: 'POST', body: form })
+                        .then(res => res.json())
+                        .then(r => {
+                            if (r.success) {
+                                const wrap = document.createElement('div');
+                                wrap.innerHTML = r.data;
+                                list.appendChild(wrap);
+                                const newItem = list.lastElementChild;
+                                newItem.querySelector('input[name="faq_category[]"]').value = f.category || '';
+                                newItem.querySelector('input[name="faq_question[]"]').value = f.question || '';
+                                newItem.querySelector('.faq-header span').textContent = f.question || 'Untitled FAQ';
+                                wp.editor.initialize(`faq_answer_${fscoIndex}`, {
+                                    tinymce: true,
+                                    quicktags: true,
+                                    setup: function (ed) {
+                                        ed.on('init', function () {
+                                            ed.setContent(f.answer || '');
+                                        });
+                                    }
+                                });
+                                fscoIndex++;
+                            }
+                        });
+                });
+            } catch {
+                alert("Invalid file format.");
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        document.querySelectorAll(".faq-header").forEach(h => {
+            h.addEventListener("click", function () {
+                const body = this.nextElementSibling;
+                const open = body.style.display === "block";
+                document.querySelectorAll(".faq-body").forEach(b => b.style.display = "none");
+                body.style.display = open ? "none" : "block";
+            });
+        });
+    });
+    </script>
+    <?php
+}
+
+// ✅ Render individual FAQ item
+function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
+    ?>
+    <div class="faq-item" data-category="<?php echo esc_attr($cat); ?>">
+        <div class="faq-header">
+            <span><?php echo esc_html($q ?: 'Untitled FAQ'); ?></span>
+            <button type="button" class="faq-remove-btn" onclick="this.closest('.faq-item').remove()">×</button>
+        </div>
+        <div class="faq-body">
+            <div class="faq-row">
+                <div class="faq-col" style="flex:0 0 160px;">
+                    <label>Category</label>
+                    <input type="text" name="faq_category[]" value="<?php echo esc_attr($cat); ?>"
+                        oninput="this.closest('.faq-item').setAttribute('data-category', this.value)">
+                </div>
+                <div class="faq-col">
+                    <label>Question</label>
+                    <input type="text" name="faq_question[]" value="<?php echo esc_attr($q); ?>"
+                        oninput="this.closest('.faq-item').querySelector('.faq-header span').textContent = (this.value || 'Untitled FAQ')">
+                </div>
+            </div>
+            <label>Answer</label>
+            <?php
+            wp_editor($a, "faq_answer_$i", [
+                'textarea_name' => 'faq_answer[]',
+                'textarea_rows' => 6,
+                'editor_height' => 160,
+                'tinymce' => true,
+                'media_buttons' => false,
+            ]);
+            ?>
+        </div>
+    </div>
+    <?php
+}
+
+// ✅ Save FAQs
+add_action('save_post_page', function ($post_id) {
+    if (!isset($_POST['faq_meta_nonce']) || !wp_verify_nonce($_POST['faq_meta_nonce'], 'save_faq_meta')) return;
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+    if (!current_user_can('edit_post', $post_id)) return;
+
+    $cats = $_POST['faq_category'] ?? [];
+    $qs   = $_POST['faq_question'] ?? [];
+    $as   = $_POST['faq_answer'] ?? [];
+
+    $faqs = [];
+    for ($i = 0; $i < count($qs); $i++) {
+        if (!empty(trim($qs[$i]))) {
+            $faqs[] = [
+                'category' => sanitize_text_field($cats[$i] ?? ''),
+                'question' => sanitize_text_field($qs[$i] ?? ''),
+                'answer'   => wp_kses_post($as[$i] ?? '')
+            ];
+        }
+    }
+
+    update_post_meta($post_id, '_faq_json', wp_json_encode($faqs));
+});
