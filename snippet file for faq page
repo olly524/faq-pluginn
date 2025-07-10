@@ -146,12 +146,28 @@ function fsco_render_faq_metabox($post) {
                     document.getElementById('faq-list').appendChild(item);
                     item.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
                     jQuery('#faq-list').sortable('refresh');
+
+                    // Prepopulate example values
+                    const cat = item.querySelector('input[name="faq_category[]"]');
+                    const q = item.querySelector('input[name="faq_question[]"]');
+                    const title = item.querySelector('.faq-title');
+                    if (cat) cat.value = 'Example Category';
+                    if (q) {
+                        q.value = 'Example question';
+                        if (title) title.textContent = 'Example question';
+                    }
+
                     const body = item.querySelector('.faq-body');
                     body.style.display = 'block';
                     setTimeout(() => {
                         wp.editor.initialize(`faq_answer_${fscoIndex}`, {
                             tinymce: true,
-                            quicktags: true
+                            quicktags: true,
+                            setup: function (ed) {
+                                ed.on('init', function () {
+                                    ed.setContent('Example answer');
+                                });
+                            }
                         });
                     }, 10);
                     fscoIndex++;
