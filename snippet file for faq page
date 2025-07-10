@@ -153,7 +153,6 @@ function fsco_render_faq_metabox($post) {
                             tinymce: true,
                             quicktags: true
                         });
-                        body.style.display = '';
                     }, 10);
                     fscoIndex++;
                 }
