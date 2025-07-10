@@ -53,7 +53,7 @@ function fsco_render_faq_metabox($post) {
             padding: 10px 16px;
             font-weight: 600;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-start;
             align-items: center;
             cursor: pointer;
         }
@@ -63,6 +63,7 @@ function fsco_render_faq_metabox($post) {
             font-size: 20px;
             color: #888;
             cursor: pointer;
+            margin-left: auto;
         }
         .faq-body {
             padding: 16px;
@@ -223,7 +224,7 @@ function fsco_render_faq_metabox($post) {
                                 const newItem = list.lastElementChild;
                                 newItem.querySelector('input[name="faq_category[]"]').value = f.category || '';
                                 newItem.querySelector('input[name="faq_question[]"]').value = f.question || '';
-                                newItem.querySelector('.faq-header span').textContent = f.question || 'Untitled FAQ';
+                                newItem.querySelector('.faq-title').textContent = f.question || 'Untitled FAQ';
                                 newItem.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
                                 const catInput = newItem.querySelector('input[name="faq_category[]"]');
                                 if (catInput) catInput.addEventListener('input', fscoUpdateCategoryList);
@@ -269,7 +270,7 @@ function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
     <div class="faq-item" data-category="<?php echo esc_attr($cat); ?>">
         <div class="faq-header">
             <span class="dashicons dashicons-move drag-handle"></span>
-            <span><?php echo esc_html($q ?: 'Untitled FAQ'); ?></span>
+            <span class="faq-title"><?php echo esc_html($q ?: 'Untitled FAQ'); ?></span>
             <button type="button" class="faq-remove-btn" onclick="this.closest('.faq-item').remove()">×</button>
         </div>
         <div class="faq-body">
@@ -282,7 +283,7 @@ function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
                 <div class="faq-col" style="flex:1;">
                     <label>Question</label>
                     <input type="text" name="faq_question[]" value="<?php echo esc_attr($q); ?>"
-                        oninput="this.closest('.faq-item').querySelector('.faq-header span').textContent = (this.value || 'Untitled FAQ')">
+                        oninput="this.closest('.faq-item').querySelector('.faq-title').textContent = (this.value || 'Untitled FAQ')">
                 </div>
             </div>
             <label>Answer</label>
