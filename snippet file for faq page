@@ -1,36 +1,76 @@
+
+/**
+ * Plugin Name: Custom FAQ Editor
+ * Description: Adds a custom meta box for managing FAQs on a specific page (ID 9196).
+ * Version: 1.0
+ * Author: Your Name
+ */
+
+// Action to add the custom meta box to a specific page.
 add_action('add_meta_boxes', function () {
+    // Get the current post ID from GET or POST requests.
     $post_id = $_GET['post'] ?? $_POST['post_ID'] ?? null;
+    // Check if the current post ID is 9196.
     if ((int) $post_id === 9196) {
+        // Add the meta box with title 'FAQ Editor', callback 'fsco_render_faq_metabox',
+        // for 'page' post type, in 'normal' context, with 'default' priority.
         add_meta_box('faq_editor', 'FAQ Editor', 'fsco_render_faq_metabox', 'page', 'normal', 'default');
     }
 });
 
+// Action to enqueue scripts and styles for the admin area.
 add_action('admin_enqueue_scripts', function ($hook) {
+    // Only load scripts on the post editing screen.
     if ($hook !== 'post.php') return;
+
+    // Get the current post ID.
     $post_id = $_GET['post'] ?? null;
+    // Only load scripts for the specific page ID 9196.
     if ((int) $post_id !== 9196) return;
 
-    wp_enqueue_editor();
-    wp_enqueue_script('fsco-faq-editor', admin_url('admin-ajax.php'), [], null, true);
-    wp_localize_script('fsco-faq-editor', 'FSFAQ', [
-        'ajax_url' => admin_url('admin-ajax.php'),
-        'nonce'    => wp_create_nonce('fsco_faq_nonce')
-    ]);
+    // Enqueue jQuery UI Sortable for drag-and-drop functionality.
+    wp_enqueue_script('jquery-ui-sortable');
+    // Enqueue Dashicons for icons (e.g., drag handle, remove button).
+    wp_enqueue_style('dashicons');
+    // Re-enable Quicktags for the text editor.
+    wp_enqueue_script('quicktags');
+    // Re-enable wp-editor script which is necessary for wp.editor.initialize to work.
+    wp_enqueue_script('wp-editor');
+
+    // No need to enqueue fsco-faq-editor as a separate file,
+    // its content will be inline in the metabox function.
+    // The ajax_url and nonce will be passed directly to the inline script.
 });
 
+// AJAX action to add a new FAQ row.
 add_action('wp_ajax_fsco_add_faq_row', function () {
+    // Verify the nonce for security.
     check_ajax_referer('fsco_faq_nonce', 'nonce');
+    // Get the index for the new FAQ item, defaulting to 0.
     $index = absint($_POST['index'] ?? 0);
+    // Start output buffering to capture the HTML.
     ob_start();
+    // Render an empty FAQ item for the new row.
     fsco_render_faq_item('', '', '', $index);
+    // Send the captured HTML as a JSON success response.
     wp_send_json_success(ob_get_clean());
 });
+
+/**
+ * Renders the main FAQ editor meta box content.
+ *
+ * @param WP_Post $post The current post object.
+ */
 function fsco_render_faq_metabox($post) {
+    // Decode existing FAQs from post meta, or initialize as an empty array.
     $faqs = json_decode(get_post_meta($post->ID, '_faq_json', true), true) ?: [];
+    // Extract unique categories from existing FAQs.
     $categories = array_unique(array_filter(array_column($faqs, 'category')));
+    // Add a nonce field for security when saving the post.
     wp_nonce_field('save_faq_meta', 'faq_meta_nonce');
     ?>
     <style>
+        /* Basic styling for the FAQ editor */
         .fsfaq-controls {
             display: flex;
             flex-wrap: wrap;
@@ -50,7 +90,7 @@ function fsco_render_faq_metabox($post) {
             padding: 10px 16px;
             font-weight: 600;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-start;
             align-items: center;
             cursor: pointer;
         }
@@ -60,15 +100,30 @@ function fsco_render_faq_metabox($post) {
             font-size: 20px;
             color: #888;
             cursor: pointer;
+            margin-left: auto; /* Pushes button to the right */
         }
         .faq-body {
             padding: 16px;
-            display: none;
+            display: none; /* Hidden by default, toggled by JS */
+        }
+        .drag-handle {
+            cursor: move;
+            margin-right: 6px;
+            color: #888;
+        }
+        .faq-sort-placeholder {
+            background: #f1f1f1;
+            border: 1px dashed #ccc;
+            height: 64px;
+            margin-bottom: 12px;
         }
         .faq-row {
             display: flex;
             gap: 12px;
             margin-bottom: 12px;
+        }
+        .faq-col {
+            flex: 1; /* Make columns flexible */
         }
         .faq-col input {
             width: 100%;
@@ -76,6 +131,11 @@ function fsco_render_faq_metabox($post) {
             font-size: 14px;
             border-radius: 4px;
             border: 1px solid #ccc;
+        }
+        .faq-col label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
         }
     </style>
 
@@ -87,92 +147,180 @@ function fsco_render_faq_metabox($post) {
                 <option value="<?php echo esc_attr($cat); ?>"><?php echo esc_html($cat); ?></option>
             <?php endforeach; ?>
         </select>
-        <button type="button" onclick="fscoExportFaqs()">Export</button>
+        <button type="button" class="button button-primary" onclick="fscoExportFaqs()">Export</button>
         <label>
-            <button type="button" onclick="document.getElementById('fsco-import').click()">Import</button>
+            <button type="button" class="button button-primary" onclick="document.getElementById('fsco-import').click()">Import</button>
             <input type="file" id="fsco-import" accept=".json" style="display:none" onchange="fscoImportFaqs(this)">
         </label>
     </div>
+    <datalist id="fsfaq-category-options">
+        <?php foreach ($categories as $cat): ?>
+            <option value="<?php echo esc_attr($cat); ?>"></option>
+        <?php endforeach; ?>
+    </datalist>
 
     <div id="faq-list">
-        <?php foreach ($faqs as $i => $faq) {
+        <?php
+        // Render existing FAQ items.
+        foreach ($faqs as $i => $faq) {
             fsco_render_faq_item($faq['category'], $faq['question'], $faq['answer'], $i);
         } ?>
     </div>
 
     <script>
+    // Initialize index for new FAQ items.
     let fscoIndex = <?php echo count($faqs); ?>;
 
-    function fscoToggleFaqBody() {
-        const body = this.nextElementSibling;
-        const open = body.style.display === "block";
-        document.querySelectorAll('.faq-body').forEach(b => b.style.display = 'none');
-        body.style.display = open ? 'none' : 'block';
+    // Define FSFAQ object with AJAX URL and nonce for the inline script.
+    const FSFAQ = {
+        ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
+        nonce: '<?php echo wp_create_nonce('fsco_faq_nonce'); ?>'
+    };
+
+    /**
+     * Updates the datalist for FAQ categories based on current input values.
+     */
+    function fscoUpdateCategoryList() {
+        const list = document.getElementById('fsfaq-category-options');
+        const cats = new Set(); // Use a Set to store unique categories.
+        document.querySelectorAll('input[name="faq_category[]"]').forEach(el => {
+            const v = el.value.trim();
+            if (v) cats.add(v);
+        });
+        list.innerHTML = ''; // Clear existing options.
+        cats.forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            list.appendChild(opt);
+        });
     }
 
+    /**
+     * Toggles the visibility of an FAQ item's body.
+     * 'this' refers to the clicked faq-header element.
+     */
+    function fscoToggleFaqBody() {
+        const body = this.nextElementSibling; // Get the faq-body element.
+        const isOpen = body.style.display === "block"; // Check if it's currently open.
+
+        // Close all other open FAQ bodies.
+        document.querySelectorAll('.faq-body').forEach(b => {
+            if (b !== body) { // Don't close the current one if it's already open
+                b.style.display = 'none';
+            }
+        });
+
+        // Toggle the display of the current FAQ body.
+        body.style.display = isOpen ? 'none' : 'block';
+    }
+
+    /**
+     * Adds a new FAQ row via AJAX.
+     */
     function fscoAddFaq() {
         const form = new FormData();
         form.append('action', 'fsco_add_faq_row');
         form.append('nonce', FSFAQ.nonce);
-        form.append('index', fscoIndex);
+        form.append('index', fscoIndex); // Pass current index for unique ID generation.
+
         fetch(FSFAQ.ajax_url, { method: 'POST', body: form })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
                     const wrap = document.createElement('div');
-                    wrap.innerHTML = data.data;
+                    wrap.innerHTML = data.data; // Insert the new FAQ HTML.
                     document.getElementById('faq-list').appendChild(wrap);
                     const item = wrap.querySelector('.faq-item');
-                    if (item) item.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
-                    wp.editor.initialize(`faq_answer_${fscoIndex}`, {
-                        tinymce: true,
-                        quicktags: true
-                    });
-                    fscoIndex++;
+                    if (item) {
+                        // Attach event listener for toggling the body.
+                        item.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
+                        // Attach event listener for updating category list.
+                        const catInput = item.querySelector('input[name="faq_category[]"]');
+                        if (catInput) catInput.addEventListener('input', fscoUpdateCategoryList);
+                        // Initialize WordPress editor for the new answer textarea.
+                        // Ensure wp.editor is loaded before calling initialize.
+                        if (typeof wp !== 'undefined' && wp.editor && wp.editor.initialize) {
+                            wp.editor.initialize(`faq_answer_${fscoIndex}`, {
+                                tinymce: false, // Use Quicktags only.
+                                quicktags: true
+                            });
+                        } else {
+                            console.warn('wp.editor.initialize not available. Editor might not be fully functional.');
+                        }
+                    }
+                    fscoUpdateCategoryList(); // Update categories after adding new item.
+                    fscoIndex++; // Increment index for the next new item.
+                } else {
+                    console.error('Failed to add FAQ row via AJAX:', data);
                 }
+            })
+            .catch(error => {
+                console.error('Error adding FAQ row:', error);
             });
     }
 
+    /**
+     * Filters FAQ items based on the selected category.
+     * @param {string} category The category to filter by.
+     */
     function fscoFilterFaqs(category) {
         document.querySelectorAll('.faq-item').forEach(item => {
             const value = item.getAttribute('data-category') || '';
+            // Show item if no category is selected or if it matches the selected category.
             item.style.display = (!category || category === value) ? 'block' : 'none';
         });
     }
 
+    /**
+     * Exports all FAQs to a JSON file.
+     */
     function fscoExportFaqs() {
         const faqs = [];
-        document.querySelectorAll('.faq-item').forEach((item, i) => {
+        document.querySelectorAll('.faq-item').forEach(item => {
             const cat = item.querySelector('input[name="faq_category[]"]').value;
-            const q = item.querySelector('input[name="faq_question[]"]').value;
-            const a = tinyMCE.get(`faq_answer_${i}`)?.getContent() || '';
-            if (q.trim()) faqs.push({ category: cat, question: q, answer: a });
+            const q   = item.querySelector('input[name="faq_question[]"]').value;
+            const textarea = item.querySelector('textarea');
+            const id = textarea ? textarea.id : '';
+            // Get content from TinyMCE editor if available, otherwise from textarea.
+            const editor = window.tinyMCE ? tinyMCE.get(id) : null;
+            const answer = editor ? editor.getContent() :
+                           (textarea ? textarea.value : '');
+            // Only add if question is not empty.
+            if (q.trim()) faqs.push({ category: cat, question: q, answer });
         });
-        const blob = new Blob([JSON.stringify(faqs, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'faqs.json';
-        a.click();
-        URL.revokeObjectURL(a.href);
+        // Create a Blob from the JSON data and trigger a download.
+        const blob = new Blob([JSON.stringify(faqs, null, 2)], { type: "application/json" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "faqs.json";
+        link.click();
+        URL.revokeObjectURL(link.href); // Clean up the URL object.
     }
 
+    /**
+     * Imports FAQs from a JSON file.
+     * @param {HTMLInputElement} input The file input element.
+     */
     function fscoImportFaqs(input) {
         const file = input.files[0];
-        if (!file) return;
+        if (!file) return; // No file selected.
+
         const reader = new FileReader();
         reader.onload = () => {
             try {
                 const data = JSON.parse(reader.result);
-                if (!Array.isArray(data)) throw new Error();
+                if (!Array.isArray(data)) throw new Error("Invalid JSON format. Expected an array.");
+
                 const list = document.getElementById('faq-list');
-                list.innerHTML = '';
-                fscoIndex = 0;
-                data.forEach((f, i) => {
+                list.innerHTML = ''; // Clear existing FAQs.
+
+                const importPromises = data.map((f, i) => { // Use 'i' for the current index
                     const form = new FormData();
                     form.append('action', 'fsco_add_faq_row');
                     form.append('nonce', FSFAQ.nonce);
-                    form.append('index', fscoIndex);
-                    fetch(FSFAQ.ajax_url, { method: 'POST', body: form })
+                    form.append('index', i); // Pass 'i' as the index for the new row
+
+                    return fetch(FSFAQ.ajax_url, { method: 'POST', body: form })
                         .then(res => res.json())
                         .then(r => {
                             if (r.success) {
@@ -180,68 +328,140 @@ function fsco_render_faq_metabox($post) {
                                 wrap.innerHTML = r.data;
                                 list.appendChild(wrap);
                                 const newItem = list.lastElementChild;
+
+                                // Populate fields with imported data.
                                 newItem.querySelector('input[name="faq_category[]"]').value = f.category || '';
                                 newItem.querySelector('input[name="faq_question[]"]').value = f.question || '';
-                                newItem.querySelector('.faq-header span').textContent = f.question || 'Untitled FAQ';
+                                newItem.querySelector('.faq-title').textContent = f.question || 'Untitled FAQ';
+
+                                // Attach event listeners.
                                 newItem.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
-                                wp.editor.initialize(`faq_answer_${fscoIndex}`, {
-                                    tinymce: true,
-                                    quicktags: true,
-                                    setup: function (ed) {
-                                        ed.on('init', function () {
-                                            ed.setContent(f.answer || '');
-                                        });
-                                    }
-                                });
-                                fscoIndex++;
+                                const catInput = newItem.querySelector('input[name="faq_category[]"]');
+                                if (catInput) catInput.addEventListener('input', fscoUpdateCategoryList);
+
+                                // Set answer content directly to textarea before initializing editor.
+                                // Use 'i' to target the correct textarea ID.
+                                const answerTextarea = newItem.querySelector(`#faq_answer_${i}`);
+                                if (answerTextarea) {
+                                    // IMPORTANT: Clean 'nn' on client-side during import
+                                    answerTextarea.value = (f.answer || '').replace(/nn/g, '\n');
+                                }
+
+                                // Initialize WordPress editor for the imported answer.
+                                // Use 'i' for the editor ID.
+                                if (typeof wp !== 'undefined' && wp.editor && wp.editor.initialize) {
+                                    wp.editor.initialize(`faq_answer_${i}`, {
+                                        tinymce: false,
+                                        quicktags: true
+                                    });
+                                } else {
+                                    console.warn('wp.editor.initialize not available for imported item.');
+                                }
+
+                                fscoUpdateCategoryList();
+                            } else {
+                                console.error('Failed to import FAQ row via AJAX:', r);
                             }
                         });
                 });
-            } catch {
-                alert("Invalid file format.");
+
+                // Wait for all import promises to resolve, then update fscoIndex.
+                Promise.all(importPromises).then(() => {
+                    fscoIndex = data.length; // Update fscoIndex to the total number of imported items
+                    console.log('All FAQs imported successfully.');
+                }).catch(error => {
+                    console.error('Error during FAQ import process:', error);
+                });
+
+            } catch (e) {
+                // Use console.error instead of alert.
+                console.error("Invalid file format or JSON parsing error:", e.message);
             }
         };
-        reader.readAsText(file);
+        reader.readAsText(file); // Read the file as text.
     }
 
+    // Event listener for DOM content loaded.
     document.addEventListener("DOMContentLoaded", () => {
+        // Attach toggle functionality to existing FAQ headers.
         document.querySelectorAll(".faq-header").forEach(h => {
             h.addEventListener("click", fscoToggleFaqBody);
+        });
+        // Attach category list update to existing category inputs.
+        document.querySelectorAll('input[name="faq_category[]"]').forEach(c => {
+            c.addEventListener('input', fscoUpdateCategoryList);
+        });
+        // Initial update of the category list.
+        fscoUpdateCategoryList();
+
+        // Initialize jQuery UI Sortable for the FAQ list.
+        // Ensure jQuery is loaded before attempting to use it.
+        if (typeof jQuery !== 'undefined') {
+            jQuery(function($){
+                $('#faq-list').sortable({
+                    handle: '.drag-handle', // Element to drag.
+                    placeholder: 'faq-sort-placeholder' // Placeholder style during drag.
+                });
+            });
+        } else {
+            console.warn('jQuery not loaded. Sorting functionality might not work.');
+        }
+
+        // Initialize editors for existing FAQs after DOM is ready.
+        // This is crucial for pre-existing content to have the editor.
+        document.querySelectorAll('.faq-item').forEach((item, i) => {
+            const answerTextarea = item.querySelector(`textarea[id^="faq_answer_"]`);
+            if (answerTextarea && typeof wp !== 'undefined' && wp.editor && wp.editor.initialize) {
+                wp.editor.initialize(answerTextarea.id, {
+                    tinymce: false,
+                    quicktags: true
+                });
+            }
         });
     });
     </script>
     <?php
 }
 
-// ✅ Render individual FAQ item
+/**
+ * Renders an individual FAQ item's HTML structure.
+ *
+ * @param string $cat The FAQ category.
+ * @param string $q   The FAQ question.
+ * @param string $a   The FAQ answer.
+ * @param int    $i   The index of the FAQ item (for unique IDs).
+ */
 function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
     ?>
     <div class="faq-item" data-category="<?php echo esc_attr($cat); ?>">
         <div class="faq-header">
-            <span><?php echo esc_html($q ?: 'Untitled FAQ'); ?></span>
+            <span class="dashicons dashicons-move drag-handle"></span>
+            <span class="faq-title"><?php echo esc_html($q ?: 'Untitled FAQ'); ?></span>
             <button type="button" class="faq-remove-btn" onclick="this.closest('.faq-item').remove()">×</button>
         </div>
         <div class="faq-body">
             <div class="faq-row">
                 <div class="faq-col" style="flex:0 0 160px;">
                     <label>Category</label>
-                    <input type="text" name="faq_category[]" value="<?php echo esc_attr($cat); ?>"
-                        oninput="this.closest('.faq-item').setAttribute('data-category', this.value)">
+                    <input type="text" name="faq_category[]" list="fsfaq-category-options" value="<?php echo esc_attr($cat); ?>"
+                        oninput="this.closest('.faq-item').setAttribute('data-category', this.value); fscoUpdateCategoryList();">
                 </div>
-                <div class="faq-col">
+                <div class="faq-col" style="flex:1;">
                     <label>Question</label>
                     <input type="text" name="faq_question[]" value="<?php echo esc_attr($q); ?>"
-                        oninput="this.closest('.faq-item').querySelector('.faq-header span').textContent = (this.value || 'Untitled FAQ')">
+                        oninput="this.closest('.faq-item').querySelector('.faq-title').textContent = (this.value || 'Untitled FAQ')">
                 </div>
             </div>
             <label>Answer</label>
             <?php
+            // Render the WordPress editor for the answer.
             wp_editor($a, "faq_answer_$i", [
                 'textarea_name' => 'faq_answer[]',
                 'textarea_rows' => 6,
                 'editor_height' => 160,
-                'tinymce' => true,
-                'media_buttons' => false,
+                'tinymce'       => false, // Use Quicktags only.
+                'quicktags'     => true,  // Enable Quicktags.
+                'media_buttons' => false, // Disable media buttons.
             ]);
             ?>
         </div>
@@ -249,26 +469,50 @@ function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
     <?php
 }
 
-// ✅ Save FAQs
+// Action to save the FAQ data when the post is saved.
 add_action('save_post_page', function ($post_id) {
+    // Verify nonce for security.
     if (!isset($_POST['faq_meta_nonce']) || !wp_verify_nonce($_POST['faq_meta_nonce'], 'save_faq_meta')) return;
+    // Return if it's an autosave.
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+    // Check user capabilities.
     if (!current_user_can('edit_post', $post_id)) return;
 
+    // Get submitted FAQ data.
     $cats = $_POST['faq_category'] ?? [];
     $qs   = $_POST['faq_question'] ?? [];
     $as   = $_POST['faq_answer'] ?? [];
 
     $faqs = [];
+    // Loop through questions to build the FAQ array.
     for ($i = 0; $i < count($qs); $i++) {
+        // Only add if the question is not empty.
         if (!empty(trim($qs[$i]))) {
+            $answer_content = $as[$i] ?? '';
+            // Normalize newlines to \n (handles \r\n and \r)
+            $answer_content = str_replace(array("\r\n", "\r"), "\n", $answer_content);
+            // Replace literal 'nn' with '\n' if it's appearing as a string from input
+            // This is a specific fix for the reported 'nn' issue.
+            $answer_content = str_replace('nn', "\n", $answer_content);
+
             $faqs[] = [
-                'category' => sanitize_text_field($cats[$i] ?? ''),
-                'question' => sanitize_text_field($qs[$i] ?? ''),
-                'answer'   => wp_kses_post($as[$i] ?? '')
+                'category' => sanitize_text_field($cats[$i] ?? ''), // Sanitize category.
+                'question' => sanitize_text_field($qs[$i] ?? ''), // Sanitize question.
+                // Use wp_kses_post for rich text answers, allowing a safe subset of HTML.
+                'answer'   => wp_kses_post($answer_content)
             ];
         }
     }
 
-    update_post_meta($post_id, '_faq_json', wp_json_encode($faqs));
+    $json_output = wp_json_encode($faqs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    // --- DEBUGGING LINE ---
+    // This line will output the JSON string to your PHP error log.
+    // Check your server's error log file (often php_error.log or in your web server logs)
+    // or WordPress debug.log if WP_DEBUG_LOG is enabled.
+    error_log('FAQ JSON saved to meta: ' . $json_output);
+    // --- END DEBUGGING LINE ---
+
+    update_post_meta($post_id, '_faq_json', $json_output);
 });
+
