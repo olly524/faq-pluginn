@@ -11,6 +11,7 @@ add_action('admin_enqueue_scripts', function ($hook) {
     if ((int) $post_id !== 9196) return;
 
     wp_enqueue_editor();
+    wp_enqueue_script('quicktags');
     wp_enqueue_script('fsco-faq-editor', admin_url('admin-ajax.php'), [], null, true);
     wp_localize_script('fsco-faq-editor', 'FSFAQ', [
         'ajax_url' => admin_url('admin-ajax.php'),
