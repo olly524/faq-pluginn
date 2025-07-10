@@ -10,8 +10,6 @@ add_action('admin_enqueue_scripts', function ($hook) {
     $post_id = $_GET['post'] ?? null;
     if ((int) $post_id !== 9196) return;
 
-    wp_enqueue_editor();
-    wp_enqueue_script('quicktags');
     wp_enqueue_script('jquery-ui-sortable');
     wp_enqueue_style('dashicons');
     wp_enqueue_script('fsco-faq-editor', admin_url('admin-ajax.php'), [], null, true);
@@ -163,10 +161,6 @@ function fsco_render_faq_metabox($post) {
                         const catInput = item.querySelector('input[name="faq_category[]"]');
                         if (catInput) catInput.addEventListener('input', fscoUpdateCategoryList);
                     }
-                    wp.editor.initialize(`faq_answer_${fscoIndex}`, {
-                        tinymce: false,
-                        quicktags: true
-                    });
                     fscoUpdateCategoryList();
                     fscoIndex++;
                 }
@@ -186,16 +180,15 @@ function fsco_render_faq_metabox($post) {
             const cat = item.querySelector('input[name="faq_category[]"]').value;
             const q = item.querySelector('input[name="faq_question[]"]').value;
             const textarea = item.querySelector('textarea');
-            const editor = textarea ? tinyMCE.get(textarea.id) : null;
-            const a = editor ? editor.getContent() : (textarea ? textarea.value : '');
-            if (q.trim()) faqs.push({ category: cat, question: q, answer: a });
+            const answer = textarea ? textarea.value : "";
+            if (q.trim()) faqs.push({ category: cat, question: q, answer: answer });
         });
-        const blob = new Blob([JSON.stringify(faqs, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'faqs.json';
-        a.click();
-        URL.revokeObjectURL(a.href);
+        const blob = new Blob([JSON.stringify(faqs, null, 2)], { type: "application/json" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "faqs.json";
+        link.click();
+        URL.revokeObjectURL(link.href);
     }
 
     function fscoImportFaqs(input) {
@@ -228,10 +221,6 @@ function fsco_render_faq_metabox($post) {
                                 newItem.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
                                 const catInput = newItem.querySelector('input[name="faq_category[]"]');
                                 if (catInput) catInput.addEventListener('input', fscoUpdateCategoryList);
-                                wp.editor.initialize(`faq_answer_${fscoIndex}`, {
-                                    tinymce: false,
-                                    quicktags: true
-                                });
                                 document.getElementById(`faq_answer_${fscoIndex}`).value = f.answer || '';
                                 fscoUpdateCategoryList();
                                 fscoIndex++;
@@ -288,14 +277,7 @@ function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
             </div>
             <label>Answer</label>
             <?php
-            wp_editor($a, "faq_answer_$i", [
-                'textarea_name' => 'faq_answer[]',
-                'textarea_rows' => 6,
-                'editor_height' => 160,
-                'tinymce'       => false,
-                'quicktags'     => true,
-                'media_buttons' => false,
-            ]);
+            <textarea id="faq_answer_<?php echo $i; ?>" name="faq_answer[]" rows="6" style="width:100%;"><?php echo esc_textarea($a); ?></textarea>
             ?>
         </div>
     </div>
