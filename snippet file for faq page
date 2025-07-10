@@ -88,12 +88,17 @@ function fsco_render_faq_metabox($post) {
                 <option value="<?php echo esc_attr($cat); ?>"><?php echo esc_html($cat); ?></option>
             <?php endforeach; ?>
         </select>
-        <button type="button" onclick="fscoExportFaqs()">Export</button>
+        <button type="button" class="button button-primary" onclick="fscoExportFaqs()">Export</button>
         <label>
-            <button type="button" onclick="document.getElementById('fsco-import').click()">Import</button>
+            <button type="button" class="button button-primary" onclick="document.getElementById('fsco-import').click()">Import</button>
             <input type="file" id="fsco-import" accept=".json" style="display:none" onchange="fscoImportFaqs(this)">
         </label>
     </div>
+    <datalist id="fsfaq-category-options">
+        <?php foreach ($categories as $cat): ?>
+            <option value="<?php echo esc_attr($cat); ?>"></option>
+        <?php endforeach; ?>
+    </datalist>
 
     <div id="faq-list">
         <?php foreach ($faqs as $i => $faq) {
@@ -224,10 +229,10 @@ function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
             <div class="faq-row">
                 <div class="faq-col" style="flex:0 0 160px;">
                     <label>Category</label>
-                    <input type="text" name="faq_category[]" value="<?php echo esc_attr($cat); ?>"
+                    <input type="text" name="faq_category[]" list="fsfaq-category-options" value="<?php echo esc_attr($cat); ?>"
                         oninput="this.closest('.faq-item').setAttribute('data-category', this.value)">
                 </div>
-                <div class="faq-col">
+                <div class="faq-col" style="flex:1;">
                     <label>Question</label>
                     <input type="text" name="faq_question[]" value="<?php echo esc_attr($q); ?>"
                         oninput="this.closest('.faq-item').querySelector('.faq-header span').textContent = (this.value || 'Untitled FAQ')">
