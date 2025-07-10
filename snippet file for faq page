@@ -103,6 +103,13 @@ function fsco_render_faq_metabox($post) {
     <script>
     let fscoIndex = <?php echo count($faqs); ?>;
 
+    function fscoToggleFaqBody() {
+        const body = this.nextElementSibling;
+        const open = body.style.display === "block";
+        document.querySelectorAll('.faq-body').forEach(b => b.style.display = 'none');
+        body.style.display = open ? 'none' : 'block';
+    }
+
     function fscoAddFaq() {
         const form = new FormData();
         form.append('action', 'fsco_add_faq_row');
@@ -115,6 +122,8 @@ function fsco_render_faq_metabox($post) {
                     const wrap = document.createElement('div');
                     wrap.innerHTML = data.data;
                     document.getElementById('faq-list').appendChild(wrap);
+                    const item = wrap.querySelector('.faq-item');
+                    if (item) item.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
                     wp.editor.initialize(`faq_answer_${fscoIndex}`, {
                         tinymce: true,
                         quicktags: true
@@ -174,6 +183,7 @@ function fsco_render_faq_metabox($post) {
                                 newItem.querySelector('input[name="faq_category[]"]').value = f.category || '';
                                 newItem.querySelector('input[name="faq_question[]"]').value = f.question || '';
                                 newItem.querySelector('.faq-header span').textContent = f.question || 'Untitled FAQ';
+                                newItem.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
                                 wp.editor.initialize(`faq_answer_${fscoIndex}`, {
                                     tinymce: true,
                                     quicktags: true,
@@ -196,12 +206,7 @@ function fsco_render_faq_metabox($post) {
 
     document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".faq-header").forEach(h => {
-            h.addEventListener("click", function () {
-                const body = this.nextElementSibling;
-                const open = body.style.display === "block";
-                document.querySelectorAll(".faq-body").forEach(b => b.style.display = "none");
-                body.style.display = open ? "none" : "block";
-            });
+            h.addEventListener("click", fscoToggleFaqBody);
         });
     });
     </script>
