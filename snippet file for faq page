@@ -12,6 +12,8 @@ add_action('admin_enqueue_scripts', function ($hook) {
 
     wp_enqueue_editor();
     wp_enqueue_script('quicktags');
+    wp_enqueue_script('jquery-ui-sortable');
+    wp_enqueue_style('dashicons');
     wp_enqueue_script('fsco-faq-editor', admin_url('admin-ajax.php'), [], null, true);
     wp_localize_script('fsco-faq-editor', 'FSFAQ', [
         'ajax_url' => admin_url('admin-ajax.php'),
@@ -66,6 +68,17 @@ function fsco_render_faq_metabox($post) {
             padding: 16px;
             display: none;
         }
+        .drag-handle {
+            cursor: move;
+            margin-right: 6px;
+            color: #888;
+        }
+        .faq-sort-placeholder {
+            background: #f1f1f1;
+            border: 1px dashed #ccc;
+            height: 64px;
+            margin-bottom: 12px;
+        }
         .faq-row {
             display: flex;
             gap: 12px;
@@ -109,6 +122,21 @@ function fsco_render_faq_metabox($post) {
     <script>
     let fscoIndex = <?php echo count($faqs); ?>;
 
+    function fscoUpdateCategoryList() {
+        const list = document.getElementById('fsfaq-category-options');
+        const cats = new Set();
+        document.querySelectorAll('input[name="faq_category[]"]').forEach(el => {
+            const v = el.value.trim();
+            if (v) cats.add(v);
+        });
+        list.innerHTML = '';
+        cats.forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            list.appendChild(opt);
+        });
+    }
+
     function fscoToggleFaqBody() {
         const body = this.nextElementSibling;
         const open = body.style.display === "block";
@@ -129,11 +157,16 @@ function fsco_render_faq_metabox($post) {
                     wrap.innerHTML = data.data;
                     document.getElementById('faq-list').appendChild(wrap);
                     const item = wrap.querySelector('.faq-item');
-                    if (item) item.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
+                    if (item) {
+                        item.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
+                        const catInput = item.querySelector('input[name="faq_category[]"]');
+                        if (catInput) catInput.addEventListener('input', fscoUpdateCategoryList);
+                    }
                     wp.editor.initialize(`faq_answer_${fscoIndex}`, {
                         tinymce: false,
                         quicktags: true
                     });
+                    fscoUpdateCategoryList();
                     fscoIndex++;
                 }
             });
@@ -148,12 +181,12 @@ function fsco_render_faq_metabox($post) {
 
     function fscoExportFaqs() {
         const faqs = [];
-        document.querySelectorAll('.faq-item').forEach((item, i) => {
+        document.querySelectorAll('.faq-item').forEach(item => {
             const cat = item.querySelector('input[name="faq_category[]"]').value;
             const q = item.querySelector('input[name="faq_question[]"]').value;
-            const editor = tinyMCE.get(`faq_answer_${i}`);
-            const a = editor ? editor.getContent() :
-                        document.getElementById(`faq_answer_${i}`).value;
+            const textarea = item.querySelector('textarea');
+            const editor = textarea ? tinyMCE.get(textarea.id) : null;
+            const a = editor ? editor.getContent() : (textarea ? textarea.value : '');
             if (q.trim()) faqs.push({ category: cat, question: q, answer: a });
         });
         const blob = new Blob([JSON.stringify(faqs, null, 2)], { type: 'application/json' });
@@ -192,11 +225,14 @@ function fsco_render_faq_metabox($post) {
                                 newItem.querySelector('input[name="faq_question[]"]').value = f.question || '';
                                 newItem.querySelector('.faq-header span').textContent = f.question || 'Untitled FAQ';
                                 newItem.querySelector('.faq-header').addEventListener('click', fscoToggleFaqBody);
+                                const catInput = newItem.querySelector('input[name="faq_category[]"]');
+                                if (catInput) catInput.addEventListener('input', fscoUpdateCategoryList);
                                 wp.editor.initialize(`faq_answer_${fscoIndex}`, {
                                     tinymce: false,
                                     quicktags: true
                                 });
                                 document.getElementById(`faq_answer_${fscoIndex}`).value = f.answer || '';
+                                fscoUpdateCategoryList();
                                 fscoIndex++;
                             }
                         });
@@ -212,6 +248,16 @@ function fsco_render_faq_metabox($post) {
         document.querySelectorAll(".faq-header").forEach(h => {
             h.addEventListener("click", fscoToggleFaqBody);
         });
+        document.querySelectorAll('input[name="faq_category[]"]').forEach(c => {
+            c.addEventListener('input', fscoUpdateCategoryList);
+        });
+        fscoUpdateCategoryList();
+        jQuery(function($){
+            $('#faq-list').sortable({
+                handle: '.drag-handle',
+                placeholder: 'faq-sort-placeholder'
+            });
+        });
     });
     </script>
     <?php
@@ -222,6 +268,7 @@ function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
     ?>
     <div class="faq-item" data-category="<?php echo esc_attr($cat); ?>">
         <div class="faq-header">
+            <span class="dashicons dashicons-move drag-handle"></span>
             <span><?php echo esc_html($q ?: 'Untitled FAQ'); ?></span>
             <button type="button" class="faq-remove-btn" onclick="this.closest('.faq-item').remove()">×</button>
         </div>
@@ -230,7 +277,7 @@ function fsco_render_faq_item($cat = '', $q = '', $a = '', $i = 0) {
                 <div class="faq-col" style="flex:0 0 160px;">
                     <label>Category</label>
                     <input type="text" name="faq_category[]" list="fsfaq-category-options" value="<?php echo esc_attr($cat); ?>"
-                        oninput="this.closest('.faq-item').setAttribute('data-category', this.value)">
+                        oninput="this.closest('.faq-item').setAttribute('data-category', this.value); fscoUpdateCategoryList();">
                 </div>
                 <div class="faq-col" style="flex:1;">
                     <label>Question</label>
